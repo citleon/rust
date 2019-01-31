@@ -24,9 +24,10 @@ pub use self::LintSource::*;
 use rustc_data_structures::sync::{self, Lrc};
 
 use errors::{DiagnosticBuilder, DiagnosticId};
-use hir::def_id::{CrateNum, LOCAL_CRATE};
+use hir::def_id::{CrateNum, DefId, LOCAL_CRATE};
 use hir::intravisit;
 use hir;
+use hir::CRATE_HIR_ID;
 use lint::builtin::BuiltinLintDiagnostics;
 use lint::builtin::parser::{QUESTION_MARK_MACRO_SEP, ILL_FORMED_ATTRIBUTE_INPUT};
 use session::{Session, DiagnosticMessageId};
@@ -540,7 +541,7 @@ impl Level {
 }
 
 /// How a lint level was set.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum LintSource {
     /// Lint is at the default level as declared
     /// in rustc or a plugin.
@@ -722,11 +723,32 @@ fn lint_levels<'a, 'tcx>(tcx: TyCtxt<'a, 'tcx, 'tcx>, cnum: CrateNum)
     };
     let krate = tcx.hir().krate();
 
-    builder.with_lint_attrs(ast::CRATE_NODE_ID, &krate.attrs, |builder| {
-        intravisit::walk_crate(builder, krate);
-    });
+    let push = builder.levels.push(&krate.attrs);
+    builder.levels.register_id(CRATE_HIR_ID);
+    intravisit::walk_crate(&mut builder, krate);
+    builder.levels.pop(push);
 
-    Lrc::new(builder.levels.build_map())
+    let r = Lrc::new(builder.levels.build_map());
+    if tcx.sess.verbose() {
+        eprintln!("lint level map: {:#?}", r);
+    }
+    r
+}
+
+fn lint_level_root_for_def_id(tcx: TyCtxt<'a, 'tcx, 'tcx>, def_id: DefId) -> hir::HirId {
+    let mut id = tcx.hir().as_local_hir_id(def_id).unwrap();
+    let sets = tcx.lint_levels(LOCAL_CRATE);
+    loop {
+        if sets.lint_level_set(id).is_some() {
+            return id
+        }
+        let node_id =  tcx.hir().hir_to_node_id(id);
+        let next = tcx.hir().node_to_hir_id(tcx.hir().get_parent_node(node_id));
+        if next == id {
+            bug!("lint traversal reached the root of the crate");
+        }
+        id = next;
+    }
 }
 
 struct LintLevelMapBuilder<'a, 'tcx: 'a> {
@@ -742,7 +764,9 @@ impl<'a, 'tcx> LintLevelMapBuilder<'a, 'tcx> {
         where F: FnOnce(&mut Self)
     {
         let push = self.levels.push(attrs);
-        self.levels.register_id(self.tcx.hir().definitions().node_to_hir_id(id));
+        if push.changed {
+            self.levels.register_id(self.tcx.hir().definitions().node_to_hir_id(id));
+        }
         f(self);
         self.levels.pop(push);
     }
@@ -807,6 +831,7 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for LintLevelMapBuilder<'a, 'tcx> {
 
 pub fn provide(providers: &mut Providers<'_>) {
     providers.lint_levels = lint_levels;
+    providers.lint_level_root_for_def_id = lint_level_root_for_def_id;
 }
 
 /// Returns whether `span` originates in a foreign crate's external macro.

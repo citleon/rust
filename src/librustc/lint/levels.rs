@@ -16,11 +16,13 @@ use syntax::source_map::MultiSpan;
 use syntax::symbol::Symbol;
 use util::nodemap::FxHashMap;
 
+#[derive(Debug)]
 pub struct LintLevelSets {
     list: Vec<LintSet>,
     lint_cap: Level,
 }
 
+#[derive(Debug)]
 enum LintSet {
     CommandLine {
         // -A,-W,-D flags, a `Symbol` for the flag itself and `Level` for which
@@ -157,6 +159,7 @@ pub struct LintLevelsBuilder<'a> {
 
 pub struct BuilderPush {
     prev: u32,
+    pub(super) changed: bool,
 }
 
 impl<'a> LintLevelsBuilder<'a> {
@@ -454,6 +457,7 @@ impl<'a> LintLevelsBuilder<'a> {
 
         BuilderPush {
             prev: prev,
+            changed: prev != self.cur,
         }
     }
 
@@ -492,6 +496,7 @@ impl<'a> LintLevelsBuilder<'a> {
     }
 }
 
+#[derive(Debug)]
 pub struct LintLevelMap {
     sets: LintLevelSets,
     id_to_set: FxHashMap<HirId, u32>,

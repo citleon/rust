@@ -2857,31 +2857,39 @@ impl<'a, 'gcx, 'tcx> TyCtxt<'a, 'gcx, 'tcx> {
         err.emit()
     }
 
-    pub fn lint_level_at_node(self, lint: &'static Lint, mut id: NodeId)
+    pub fn lint_level_root(self, mut id: ast::NodeId) -> ast::NodeId {
+        // If the `id` has a DefId, just use the query to avoid
+        // adding dependencies to its parents
+        if let Some(def_id) = self.hir().opt_local_def_id(id) {
+            return self.hir().hir_to_node_id(self.lint_level_root_for_def_id(def_id));
+        }
+
+        let sets = self.lint_levels(LOCAL_CRATE);
+        loop {
+            let hir_id = self.hir().definitions().node_to_hir_id(id);
+            if sets.lint_level_set(hir_id).is_some() {
+                return id
+            }
+            let next = self.hir().get_parent_node(id);
+            if next == id {
+                bug!("lint traversal reached the root of the crate");
+            }
+            // If we find a node with a DefId, stop adding dependencies
+            // to the parents of `id` and just use the query
+            if let Some(def_id) = self.hir().opt_local_def_id(next) {
+                return self.hir().hir_to_node_id(self.lint_level_root_for_def_id(def_id));
+            }
+            id = next;
+        }
+    }
+
+    pub fn lint_level_at_node(self, lint: &'static Lint, id: NodeId)
         -> (lint::Level, lint::LintSource)
     {
-        // Right now we insert a `with_ignore` node in the dep graph here to
-        // ignore the fact that `lint_levels` below depends on the entire crate.
-        // For now this'll prevent false positives of recompiling too much when
-        // anything changes.
-        //
-        // Once red/green incremental compilation lands we should be able to
-        // remove this because while the crate changes often the lint level map
-        // will change rarely.
-        self.dep_graph.with_ignore(|| {
-            let sets = self.lint_levels(LOCAL_CRATE);
-            loop {
-                let hir_id = self.hir().definitions().node_to_hir_id(id);
-                if let Some(pair) = sets.level_and_source(lint, hir_id, self.sess) {
-                    return pair
-                }
-                let next = self.hir().get_parent_node(id);
-                if next == id {
-                    bug!("lint traversal reached the root of the crate");
-                }
-                id = next;
-            }
-        })
+        let sets = self.lint_levels(LOCAL_CRATE);
+        let lint_root = self.lint_level_root(id);
+        let hir_id = self.hir().definitions().node_to_hir_id(lint_root);
+        sets.level_and_source(lint, hir_id, self.sess).unwrap()
     }
 
     pub fn struct_span_lint_hir<S: Into<MultiSpan>>(self,
