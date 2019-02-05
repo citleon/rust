@@ -400,7 +400,7 @@ impl<'a, 'gcx, 'tcx> TyCtxt<'a, 'gcx, 'tcx> {
             return Ok(result);
         }
 
-        if !dep_node.kind.is_input() {
+        if !dep_node.kind.is_input() && !dep_node.kind.is_eval_always() {
             if let Some((prev_dep_node_index,
                          dep_node_index)) = self.dep_graph.try_mark_green_and_read(self,
                                                                                    &dep_node) {
