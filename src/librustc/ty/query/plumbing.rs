@@ -400,7 +400,7 @@ impl<'a, 'gcx, 'tcx> TyCtxt<'a, 'gcx, 'tcx> {
             return Ok(result);
         }
 
-        if !dep_node.kind.is_input() {
+        if !dep_node.kind.is_input() && !dep_node.kind.is_eval_always() {
             if let Some((prev_dep_node_index,
                          dep_node_index)) = self.dep_graph.try_mark_green_and_read(self,
                                                                                    &dep_node) {
@@ -1330,6 +1330,7 @@ pub fn force_from_dep_node<'a, 'gcx, 'lcx>(tcx: TyCtxt<'a, 'gcx, 'lcx>,
         DepKind::HasPanicHandler => { force!(has_panic_handler, krate!()); }
         DepKind::ExternCrate => { force!(extern_crate, def_id!()); }
         DepKind::LintLevels => { force!(lint_levels, LOCAL_CRATE); }
+        DepKind::LintLevelRootForDefId => { force!(lint_level_root_for_def_id, def_id!()); }
         DepKind::InScopeTraits => { force!(in_scope_traits_map, def_id!().index); }
         DepKind::ModuleExports => { force!(module_exports, def_id!()); }
         DepKind::IsSanitizerRuntime => { force!(is_sanitizer_runtime, krate!()); }

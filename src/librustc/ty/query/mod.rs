@@ -2,7 +2,7 @@ use dep_graph::{DepConstructor, DepNode};
 use errors::DiagnosticBuilder;
 use hir::def_id::{CrateNum, DefId, DefIndex};
 use hir::def::{Def, Export};
-use hir::{self, TraitCandidate, ItemLocalId, CodegenFnAttrs};
+use hir::{self, HirId, TraitCandidate, ItemLocalId, CodegenFnAttrs};
 use rustc_data_structures::svh::Svh;
 use infer::canonical::{self, Canonical};
 use lint;
@@ -443,6 +443,7 @@ define_queries! { <'tcx>
     Other {
         [] fn module_exports: ModuleExports(DefId) -> Option<Lrc<Vec<Export>>>,
         [] fn lint_levels: lint_levels_node(CrateNum) -> Lrc<lint::LintLevelMap>,
+        [] fn lint_level_root_for_def_id: LintLevelRootForDefId(DefId) -> HirId,
     },
 
     TypeChecking {
